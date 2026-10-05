@@ -24,7 +24,7 @@ jobs:
         uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
 
       - name: Start PostgreSQL and Redis
-        run: docker compose up -d postgres redis
+        run: MINIO_CI_IMAGE=ghcr.io/block/buzz-minio:latest docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d postgres redis minio minio-init
 
       - name: Apply migrations and seed the local community
         run: |

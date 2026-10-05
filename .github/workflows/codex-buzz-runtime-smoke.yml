@@ -1,0 +1,65 @@
+name: Buzz runtime smoke
+
+on:
+  push:
+    branches:
+      - codex/buzz-runtime-smoke
+    paths:
+      - .github/workflows/codex-buzz-runtime-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Install pinned toolchain
+        uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
+
+      - name: Start PostgreSQL, Redis, and MinIO
+        run: docker compose up -d postgres redis minio minio-init
+
+      - name: Apply migrations and seed the local community
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          ./scripts/ensure-local-relay-key.sh .env
+          set -a
+          source .env
+          set +a
+          cargo run --locked -p buzz-admin -- migrate
+          ./scripts/seed-local-community.sh
+
+      - name: Build and start Buzz Relay
+        run: |
+          set -euo pipefail
+          set -a
+          source .env
+          set +a
+          cargo build --locked -p buzz-relay
+          ./target/debug/buzz-relay > /tmp/buzz-relay.log 2>&1 &
+          relay_pid=$!
+          trap 'kill "$relay_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:3000/_liveness; then
+              echo
+              curl --fail --silent http://127.0.0.1:3000/_readiness
+              echo
+              exit 0
+            fi
+            if ! kill -0 "$relay_pid" 2>/dev/null; then
+              cat /tmp/buzz-relay.log
+              exit 1
+            fi
+            sleep 2
+          done
+          cat /tmp/buzz-relay.log
+          echo Relay did not become healthy within 120 seconds.
+          exit 1

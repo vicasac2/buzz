@@ -23,8 +23,8 @@ jobs:
       - name: Install pinned toolchain
         uses: cashapp/activate-hermit@cea9af7913204a965fd488637a8d1811bba2e616 # v1
 
-      - name: Start PostgreSQL, Redis, and MinIO
-        run: docker compose up -d postgres redis minio minio-init
+      - name: Start PostgreSQL and Redis
+        run: docker compose up -d postgres redis
 
       - name: Apply migrations and seed the local community
         run: |
